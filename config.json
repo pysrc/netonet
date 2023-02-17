@@ -1,0 +1,17 @@
+{
+    "server": {
+        "port": 8654,
+        "private-key-file": "./key.pem",
+        "public-key-file": "./cert.pem"
+    },
+    "client": {
+        "server": "127.0.0.1:8654",
+        "public-key-file": "./cert.pem",
+        "map": [
+            {
+                "inner": 9001,
+                "outer": [127, 0, 0, 1, 8080]
+            }
+        ]
+    }
+}
