@@ -90,13 +90,16 @@ async fn trans(endpoint: Endpoint, server_addr: SocketAddr, mut tcpstream: TcpSt
     match new_conn.open_bi().await {
         Ok((mut wstream, mut rstream)) => {
             wstream.write(dst).await.unwrap();
-            let f1 = async {
-                let _ = tokio::io::copy(&mut r, &mut wstream).await;
-            };
-            let f2 = async {
-                let _ = tokio::io::copy(&mut rstream, &mut w).await;
-            };
-            tokio::join!(f1, f2);
+            log::info!("forward start {:?}", &dst);
+            tokio::select! {
+                _ = async {
+                    tokio::io::copy(&mut r, &mut wstream).await
+                } => {},
+                _ = async {
+                    tokio::io::copy(&mut rstream, &mut w).await
+                } => {}
+            }
+            log::info!("forward end {:?}", &dst);
         }
         Err(_) => {}
     }

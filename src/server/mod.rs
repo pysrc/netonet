@@ -65,13 +65,13 @@ async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
     log::info!("forward start {}", dst);
     let mut tcp = TcpStream::connect(dst).await.unwrap();
     let (mut r, mut w) = tcp.split();
-
-    let f1 = async {
-        let _ = tokio::io::copy(&mut r, &mut wstream).await;
-    };
-    let f2 = async {
-        let _ = tokio::io::copy(&mut rstream, &mut w).await;
-    };
-    tokio::join!(f1, f2);
+    tokio::select! {
+        _ = async {
+            tokio::io::copy(&mut r, &mut wstream).await
+        } => {},
+        _ = async {
+            tokio::io::copy(&mut rstream, &mut w).await
+        } => {}
+    }
     log::info!("forward end {}", dst);
 }
