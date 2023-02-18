@@ -34,27 +34,30 @@ pub async fn run(config: Server) {
     log::info!("Server start in {}", config.port);
 
     while let Some(income_conn) = endpoint.accept().await {
-        let new_conn = income_conn.await.unwrap();
-        tokio::spawn(async move {
-            loop {
-                match new_conn.accept_bi().await {
-                    Ok((wstream, rstream)) => {
-                        tokio::spawn(async move {
-                            handle(wstream, rstream).await;
-                        });
-                    }
-                    Err(_) => {
-                        break;
+        if let Ok(new_conn) = income_conn.await {
+            tokio::spawn(async move {
+                loop {
+                    match new_conn.accept_bi().await {
+                        Ok((wstream, rstream)) => {
+                            tokio::spawn(async move {
+                                handle(wstream, rstream).await;
+                            });
+                        }
+                        Err(_) => {
+                            break;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     }
 }
 
 async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
     let mut forward = [0u8; 6];
-    rstream.read_exact(&mut forward).await.unwrap();
+    if let Err(_) = rstream.read_exact(&mut forward).await {
+        return;
+    }
     let port = ((forward[4] as u16) << 8) | (forward[5] as u16);
     let dst = SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(
@@ -63,15 +66,16 @@ async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
         port,
     );
     log::info!("forward start {}", dst);
-    let mut tcp = TcpStream::connect(dst).await.unwrap();
-    let (mut r, mut w) = tcp.split();
-    tokio::select! {
-        _ = async {
-            tokio::io::copy(&mut r, &mut wstream).await
-        } => {},
-        _ = async {
-            tokio::io::copy(&mut rstream, &mut w).await
-        } => {}
+    if let Ok(mut tcp) = TcpStream::connect(dst).await {
+        let (mut r, mut w) = tcp.split();
+        tokio::select! {
+            _ = async {
+                tokio::io::copy(&mut r, &mut wstream).await
+            } => {},
+            _ = async {
+                tokio::io::copy(&mut rstream, &mut w).await
+            } => {}
+        }
+        log::info!("forward end {}", dst);
     }
-    log::info!("forward end {}", dst);
 }
