@@ -4,6 +4,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
     str::FromStr,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use quinn::{ClientConfig, Endpoint};
@@ -71,6 +72,8 @@ async fn handle(endpoint: Endpoint, server_addr: SocketAddr, cfg: Iomap) {
     }
 }
 
+static mut COUNT: AtomicUsize = AtomicUsize::new(0);
+
 async fn trans(endpoint: Endpoint, server_addr: SocketAddr, mut tcpstream: TcpStream, dst: &[u8]) {
     let new_conn = match endpoint.connect(server_addr, "netonet") {
         Ok(c) => match c.await {
@@ -90,7 +93,19 @@ async fn trans(endpoint: Endpoint, server_addr: SocketAddr, mut tcpstream: TcpSt
     match new_conn.open_bi().await {
         Ok((mut wstream, mut rstream)) => {
             wstream.write(dst).await.unwrap();
-            log::info!("forward start {:?}", &dst);
+            let port = ((dst[4] as u16) << 8) | (dst[5] as u16);
+            unsafe {
+                let cur = COUNT.fetch_add(1, Ordering::Relaxed);
+                log::info!(
+                    "forward start dst={}.{}.{}.{}:{} count={}",
+                    dst[0],
+                    dst[1],
+                    dst[2],
+                    dst[3],
+                    port,
+                    cur + 1
+                );
+            }
             tokio::select! {
                 _ = async {
                     tokio::io::copy(&mut r, &mut wstream).await
@@ -99,7 +114,18 @@ async fn trans(endpoint: Endpoint, server_addr: SocketAddr, mut tcpstream: TcpSt
                     tokio::io::copy(&mut rstream, &mut w).await
                 } => {}
             }
-            log::info!("forward end {:?}", &dst);
+            unsafe {
+                let cur = COUNT.fetch_sub(1, Ordering::Relaxed);
+                log::info!(
+                    "forward end dst={}.{}.{}.{}:{} count={}",
+                    dst[0],
+                    dst[1],
+                    dst[2],
+                    dst[3],
+                    port,
+                    cur - 1
+                );
+            }
         }
         Err(_) => {}
     }

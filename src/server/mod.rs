@@ -3,6 +3,7 @@ use std::{
     io::BufReader,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use quinn::{Endpoint, RecvStream, SendStream, ServerConfig};
@@ -53,6 +54,8 @@ pub async fn run(config: Server) {
     }
 }
 
+static mut COUNT: AtomicUsize = AtomicUsize::new(0);
+
 async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
     let mut forward = [0u8; 6];
     if let Err(_) = rstream.read_exact(&mut forward).await {
@@ -65,8 +68,19 @@ async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
         )),
         port,
     );
-    log::info!("forward start {}", dst);
     if let Ok(mut tcp) = TcpStream::connect(dst).await {
+        unsafe {
+            let cur = COUNT.fetch_add(1, Ordering::Relaxed);
+            log::info!(
+                "forward start dst={}.{}.{}.{}:{} count={}",
+                forward[0],
+                forward[1],
+                forward[2],
+                forward[3],
+                port,
+                cur + 1
+            );
+        }
         let (mut r, mut w) = tcp.split();
         tokio::select! {
             _ = async {
@@ -76,6 +90,17 @@ async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
                 tokio::io::copy(&mut rstream, &mut w).await
             } => {}
         }
-        log::info!("forward end {}", dst);
+        unsafe {
+            let cur = COUNT.fetch_sub(1, Ordering::Relaxed);
+            log::info!(
+                "forward end dst={}.{}.{}.{}:{} count={}",
+                forward[0],
+                forward[1],
+                forward[2],
+                forward[3],
+                port,
+                cur - 1
+            );
+        }
     }
 }
