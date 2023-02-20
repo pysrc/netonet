@@ -3,7 +3,6 @@ use std::{
     io::BufReader,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
-    str::FromStr,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -33,7 +32,8 @@ pub async fn run(config: Client) {
         endpoint.set_default_client_config(client_config);
         endpoint
     };
-    let server_addr = SocketAddr::from_str(&config.server).unwrap();
+    let ((a, b, c, d), port) = config.server;
+    let server_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(a, b, c, d)), port);
 
     let mut ths = Vec::<JoinHandle<()>>::with_capacity(config.map.len());
     for m in config.map {
@@ -55,12 +55,13 @@ async fn handle(endpoint: Endpoint, server_addr: SocketAddr, cfg: Iomap) {
         .await
         .unwrap();
     let mut dst = [0u8; 6];
-    dst[0] = cfg.outer[0] as u8;
-    dst[1] = cfg.outer[1] as u8;
-    dst[2] = cfg.outer[2] as u8;
-    dst[3] = cfg.outer[3] as u8;
-    dst[4] = (cfg.outer[4] >> 8) as u8;
-    dst[5] = cfg.outer[4] as u8;
+    let ((a, b, c, d), port) = cfg.outer;
+    dst[0] = a;
+    dst[1] = b;
+    dst[2] = c;
+    dst[3] = d;
+    dst[4] = (port >> 8) as u8;
+    dst[5] = port as u8;
 
     loop {
         let endpoint = endpoint.clone();

@@ -5,12 +5,12 @@ use tokio::{fs::File, io::AsyncReadExt};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Iomap {
     pub inner: u16,
-    pub outer: [u16;5],
+    pub outer: ((u8, u8, u8, u8), u16),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Client {
-    pub server: String,
+    pub server: ((u8, u8, u8, u8), u16),
     #[serde(rename = "public-key-file")]
     pub public_key_file: String,
     pub map: Vec<Iomap>,
