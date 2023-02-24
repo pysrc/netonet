@@ -7,7 +7,7 @@ use std::{
 };
 
 use quinn::{Endpoint, RecvStream, SendStream, ServerConfig};
-use tokio::net::TcpStream;
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 use crate::com::Server;
 
@@ -82,14 +82,15 @@ async fn handle(mut wstream: SendStream, mut rstream: RecvStream) {
             );
         }
         let (mut r, mut w) = tcp.split();
-        tokio::select! {
-            _ = async {
-                tokio::io::copy(&mut r, &mut wstream).await
-            } => {},
-            _ = async {
-                tokio::io::copy(&mut rstream, &mut w).await
-            } => {}
-        }
+        let t1 = async {
+            let _ = tokio::io::copy(&mut r, &mut wstream).await;
+            wstream.shutdown().await
+        };
+        let t2 = async {
+            let _ = tokio::io::copy(&mut rstream, &mut w).await;
+            w.shutdown().await
+        };
+        let _ = tokio::join!(t1, t2);
         unsafe {
             let cur = COUNT.fetch_sub(1, Ordering::Relaxed);
             log::info!(
